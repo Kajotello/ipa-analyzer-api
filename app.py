@@ -195,10 +195,6 @@ async def get_timetable(date: QueryDate):
         train_delayed_info["train_name"] = f"{train_number} {train_name } rzeczywisty"
         train_delayed_info["schedule"] = list()
         train_delayed_info["category"] = element["category"]
-        if element["direction"] == 1:
-            insert_position = 0
-        else:
-            insert_position = 1
         for stop_info in element["schedule"]:
             if stop_info["departure_time"]:
                 train_info["schedule"].append(
@@ -218,11 +214,12 @@ async def get_timetable(date: QueryDate):
                         "y": stop_info["point"]["position"],
                     }
                 )
-                insert_position += 1
-            if element["direction"] == 1:
-                insert_position = len(train_info["schedule"])
+                if element["direction"] == 1:
+                    insert_position = len(train_info["schedule"])
+                else:
+                    insert_position = -1
             else:
-                insert_position = -1
+                insert_position = len(train_info["schedule"])
             if stop_info["arrival_time"]:
                 train_info["schedule"].insert(
                     insert_position,
@@ -240,7 +237,6 @@ async def get_timetable(date: QueryDate):
                         "y": stop_info["point"]["position"],
                     },
                 )
-                insert_position += 1
 
         my_list.append(train_info)
         my_list.append(train_delayed_info)
@@ -253,6 +249,7 @@ class QueryData(BaseModel):
     year: int
     direction: int
     category: int
+    time_scope: str
 
 
 @app.post("/line-travel-data/")
@@ -261,226 +258,27 @@ async def line_travel_data(data: QueryData):
         data.category = [1, 2]
     else:
         data.category = [data.category]
+
     if data.direction == 0:
         data.direction = [1, 2]
     else:
         data.direction = [data.direction]
-    collection_year = db.trains.aggregate(
+
+    data.day = [data.day]
+    data.month = [data.month]
+
+    if data.time_scope == "month":
+        data.day = [x for x in range(1, 32)]
+    if data.time_scope == "year":
+        data.month = [x for x in range(1, 13)]
+
+    collection = db.trains.aggregate(
         [
             {
                 "$match": {
                     "year": data.year,
-                    "category": {"$in": data.category},
-                    "direction": {"$in": data.direction},
-                }
-            },
-            {"$unwind": {"path": "$schedule"}},
-            {"$match": {"schedule.has_stop": 1}},
-            {
-                "$project": {
-                    "schedule": 1,
-                    "is_punctual_on_arrival": {
-                        "$cond": [{"$gt": ["$schedule.arrival_delay", 5]}, 0, 1]
-                    },
-                    "is_punctual_on_departure": {
-                        "$cond": [{"$gt": ["$schedule.departure_delay", 5]}, 0, 1]
-                    },
-                    "is_delay_gained": {
-                        "$cond": [
-                            {
-                                "$gt": [
-                                    {
-                                        "$subtract": [
-                                            "$schedule.departure_delay",
-                                            "$schedule.arrival_delay",
-                                        ]
-                                    },
-                                    0,
-                                ]
-                            },
-                            0,
-                            1,
-                        ]
-                    },
-                }
-            },
-            {
-                "$group": {
-                    "_id": {
-                        "point_name": "$schedule.point.name",
-                        "point_position": "$schedule.point.position",
-                    },
-                    "train_count": {"$sum": 1},
-                    "max_departure_delay": {"$max": "$schedule.departure_delay"},
-                    "max_arrival_delay": {"$max": "$schedule.arrival_delay"},
-                    "avg_departure_delay": {"$avg": "$schedule.departure_delay"},
-                    "avg_arrival_delay": {"$avg": "$schedule.arrival_delay"},
-                    "avg_stop_time": {"$avg": "$schedule.stop_time"},
-                    "max_delay_gained": {
-                        "$max": {
-                            "$subtract": [
-                                "$schedule.departure_delay",
-                                "$schedule.arrival_delay",
-                            ]
-                        }
-                    },
-                    "avg_delay_gained": {
-                        "$avg": {
-                            "$subtract": [
-                                "$schedule.departure_delay",
-                                "$schedule.arrival_delay",
-                            ]
-                        }
-                    },
-                    "percentage_of_punctual_on_arrival": {
-                        "$avg": "$is_punctual_on_arrival"
-                    },
-                    "percentage_of_punctual_on_departure": {
-                        "$avg": "$is_punctual_on_departure"
-                    },
-                    "percentage_of_train_without_gained_delay": {
-                        "$avg": "$is_delay_gained"
-                    },
-                    "avg_real_stop_time": {
-                        "$avg": {
-                            "$subtract": [
-                                {
-                                    "$add": [
-                                        "$schedule.departure_time",
-                                        {
-                                            "$multiply": [
-                                                "$schedule.departure_delay",
-                                                60,
-                                            ]
-                                        },
-                                    ]
-                                },
-                                {
-                                    "$add": [
-                                        "$schedule.arrival_time",
-                                        {"$multiply": ["$schedule.arrival_delay", 60]},
-                                    ]
-                                },
-                            ]
-                        }
-                    },
-                }
-            },
-            {"$sort": {"_id.point_position": 1}},
-        ]
-    )
-    collection_month = db.trains.aggregate(
-        [
-            {
-                "$match": {
-                    "year": data.year,
-                    "month": data.month,
-                    "category": {"$in": data.category},
-                    "direction": {"$in": data.direction},
-                }
-            },
-            {"$unwind": {"path": "$schedule"}},
-            {"$match": {"schedule.has_stop": 1}},
-            {
-                "$project": {
-                    "schedule": 1,
-                    "is_punctual_on_arrival": {
-                        "$cond": [{"$gt": ["$schedule.arrival_delay", 5]}, 0, 1]
-                    },
-                    "is_punctual_on_departure": {
-                        "$cond": [{"$gt": ["$schedule.departure_delay", 5]}, 0, 1]
-                    },
-                    "is_delay_gained": {
-                        "$cond": [
-                            {
-                                "$gt": [
-                                    {
-                                        "$subtract": [
-                                            "$schedule.departure_delay",
-                                            "$schedule.arrival_delay",
-                                        ]
-                                    },
-                                    0,
-                                ]
-                            },
-                            0,
-                            1,
-                        ]
-                    },
-                }
-            },
-            {
-                "$group": {
-                    "_id": {
-                        "point_name": "$schedule.point.name",
-                        "point_position": "$schedule.point.position",
-                    },
-                    "train_count": {"$sum": 1},
-                    "max_departure_delay": {"$max": "$schedule.departure_delay"},
-                    "max_arrival_delay": {"$max": "$schedule.arrival_delay"},
-                    "avg_departure_delay": {"$avg": "$schedule.departure_delay"},
-                    "avg_arrival_delay": {"$avg": "$schedule.arrival_delay"},
-                    "avg_stop_time": {"$avg": "$schedule.stop_time"},
-                    "max_delay_gained": {
-                        "$max": {
-                            "$subtract": [
-                                "$schedule.departure_delay",
-                                "$schedule.arrival_delay",
-                            ]
-                        }
-                    },
-                    "avg_delay_gained": {
-                        "$avg": {
-                            "$subtract": [
-                                "$schedule.departure_delay",
-                                "$schedule.arrival_delay",
-                            ]
-                        }
-                    },
-                    "percentage_of_punctual_on_arrival": {
-                        "$avg": "$is_punctual_on_arrival"
-                    },
-                    "percentage_of_punctual_on_departure": {
-                        "$avg": "$is_punctual_on_departure"
-                    },
-                    "percentage_of_train_without_gained_delay": {
-                        "$avg": "$is_delay_gained"
-                    },
-                    "avg_real_stop_time": {
-                        "$avg": {
-                            "$subtract": [
-                                {
-                                    "$add": [
-                                        "$schedule.departure_time",
-                                        {
-                                            "$multiply": [
-                                                "$schedule.departure_delay",
-                                                60,
-                                            ]
-                                        },
-                                    ]
-                                },
-                                {
-                                    "$add": [
-                                        "$schedule.arrival_time",
-                                        {"$multiply": ["$schedule.arrival_delay", 60]},
-                                    ]
-                                },
-                            ]
-                        }
-                    },
-                }
-            },
-            {"$sort": {"_id.point_position": 1}},
-        ]
-    )
-    collection_day = db.trains.aggregate(
-        [
-            {
-                "$match": {
-                    "year": data.year,
-                    "month": data.month,
-                    "day": data.day,
+                    "month": {"$in": data.month},
+                    "day": {"$in": data.day},
                     "category": {"$in": data.category},
                     "direction": {"$in": data.direction},
                 }
@@ -520,6 +318,7 @@ async def line_travel_data(data: QueryData):
                     "_id": {
                         "point_name": "$schedule.point.name",
                         "point_position": "$schedule.point.position",
+                        "point_type": "$schedule.point.type",
                     },
                     "train_count": {"$sum": 1},
                     "max_departure_delay": {"$max": "$schedule.departure_delay"},
@@ -580,20 +379,10 @@ async def line_travel_data(data: QueryData):
             {"$sort": {"_id.point_position": 1}},
         ]
     )
-    result = list()
     my_list = []
-    async for element in collection_year:
+    async for element in collection:
         my_list.append(element)
-    result.append(my_list)
-    my_list = []
-    async for element in collection_month:
-        my_list.append(element)
-    result.append(my_list)
-    my_list = []
-    async for element in collection_day:
-        my_list.append(element)
-    result.append(my_list)
-    return result
+    return my_list
 
 
 class StationQuery(BaseModel):
