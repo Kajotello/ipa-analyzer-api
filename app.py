@@ -270,6 +270,7 @@ async def line_travel_data(data: QueryData):
     if data.time_scope == "month":
         data.day = [x for x in range(1, 32)]
     if data.time_scope == "year":
+        data.day = [x for x in range(1, 32)]
         data.month = [x for x in range(1, 13)]
 
     collection = db.trains.aggregate(
