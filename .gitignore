@@ -1,0 +1,5 @@
+config.py
+venv
+.pytest_cache
+.benchmarks
+__pycache__
