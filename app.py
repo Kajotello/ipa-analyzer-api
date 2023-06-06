@@ -14,7 +14,11 @@ pydantic.json.ENCODERS_BY_TYPE[ObjectId] = str
 app = FastAPI()
 
 
-origins = ["http://localhost", "http://localhost:3000", "https://smart-ipa-analyser.netlify.app/"]
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+    "https://smart-ipa-analyser.netlify.app",
+]
 
 app.add_middleware(
     CORSMiddleware,
