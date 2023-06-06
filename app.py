@@ -14,10 +14,7 @@ pydantic.json.ENCODERS_BY_TYPE[ObjectId] = str
 app = FastAPI()
 
 
-origins = [
-    "http://localhost",
-    "http://localhost:3000",
-]
+origins = ["http://localhost", "http://localhost:3000", "https://smart-ipa-analyser.netlify.app/"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -393,6 +390,7 @@ class StationQuery(BaseModel):
     direction: int
     category: int
     station_name: str
+    time_scope: str
 
 
 @app.post("/station-data/")
@@ -405,13 +403,23 @@ async def stat(data: StationQuery):
         data.direction = [1, 2]
     else:
         data.direction = [data.direction]
+
+    data.day = [data.day]
+    data.month = [data.month]
+
+    if data.time_scope == "month":
+        data.day = [x for x in range(1, 32)]
+    if data.time_scope == "year":
+        data.day = [x for x in range(1, 32)]
+        data.month = [x for x in range(1, 13)]
+
     collection = db.trains.aggregate(
         [
             {
                 "$match": {
                     "year": data.year,
-                    "month": data.month,
-                    "day": data.day,
+                    "month": {"$in": data.month},
+                    "day": {"$in": data.day},
                     "category": {"$in": data.category},
                     "direction": {"$in": data.direction},
                 }

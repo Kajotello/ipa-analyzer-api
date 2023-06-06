@@ -4,3 +4,4 @@ venv
 .benchmarks
 __pycache__
 .vscode
+.space
